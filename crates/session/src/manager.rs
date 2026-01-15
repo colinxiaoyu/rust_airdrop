@@ -1,0 +1,63 @@
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
+
+use discovery::Peer;
+use tokio::sync::mpsc;
+
+use crate::{
+    event::SessionEvent,
+    session::{PeerState, Session},
+};
+
+pub struct SessionManager {
+    sessions: HashMap<String, Session>,
+    tx: mpsc::Sender<SessionEvent>,
+}
+
+impl SessionManager {
+    pub fn new(tx: mpsc::Sender<SessionEvent>) -> Self {
+        Self {
+            sessions: HashMap::new(),
+            tx,
+        }
+    }
+
+    pub async fn on_peer_discovered(&mut self, peer: Peer) {
+        let now = Instant::now();
+
+        match self.sessions.get_mut((&peer.name)) {
+            Some(session) => {
+                session.last_seen = now;
+                session.state = PeerState::online;
+            }
+            None => {
+                let session = Session {
+                    peer: peer.clone(),
+                    state: PeerState::online,
+                    last_seen: now,
+                };
+                self.sessions.insert(peer.name.clone(), session);
+                let _ = self.tx.send(SessionEvent::PeerOnline(peer)).await;
+            }
+        }
+    }
+
+    pub async fn reap_offline(&mut self, timeout: Duration) {
+        let now = Instant::now();
+        let mut offline = Vec::new();
+
+        for (name, session) in &self.sessions {
+            if now.duration_since(session.last_seen) > timeout {
+                offline.push(name.clone());
+            }
+        }
+
+        for name in offline {
+            if let Some(session) = self.sessions.remove(&name) {
+                let _ = self.tx.send(SessionEvent::PeerOffline(session.peer)).await;
+            }
+        }
+    }
+}

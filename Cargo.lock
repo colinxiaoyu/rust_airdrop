@@ -405,6 +405,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "session"
+version = "0.1.0"
+dependencies = [
+ "discovery",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -601,6 +610,10 @@ dependencies = [
  "tracing-core",
  "tracing-log",
 ]
+
+[[package]]
+name = "transfer"
+version = "0.1.0"
 
 [[package]]
 name = "unicode-ident"

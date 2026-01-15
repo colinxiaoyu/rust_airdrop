@@ -1,0 +1,9 @@
+[package]
+name = "session"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+discovery = { path = "../discovery" }
+tokio = "1.49.0"
+uuid = "1.19.0"

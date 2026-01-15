@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["crates/daemon", "crates/cli", "crates/discovery"]
+members = ["crates/daemon", "crates/cli", "crates/discovery", "crates/session", "crates/transfer"]
 
 
 [dependencies]
