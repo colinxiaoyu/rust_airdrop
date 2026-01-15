@@ -1,0 +1,10 @@
+[package]
+name = "airdrop"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["crates/daemon", "crates/cli", "crates/discovery"]
+
+
+[dependencies]
