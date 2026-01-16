@@ -9,7 +9,7 @@ pub async fn send_file(
     endpoint: &Endpoint,
     remote: &str,
     file_path: &Path,
-) -> Result<(), Box<dyn Error>> {
+) -> anyhow::Result<()> {
     let conn = endpoint.connect(remote.parse()?, "airdrop")?.await?;
 
     let mut stream = conn.open_uni().await?;
@@ -28,6 +28,6 @@ pub async fn send_file(
     stream.write_all(&header_bytes).await?;
 
     tokio::io::copy(&mut file, &mut stream).await?;
-    stream.finish().await?;
+    stream.finish()?;
     Ok(())
 }

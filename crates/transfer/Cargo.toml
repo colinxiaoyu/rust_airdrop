@@ -6,9 +6,10 @@ edition = "2024"
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
-rustls = "0.23.36"
+rustls = { version = "0.23.36", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
 quinn = "0.11.9"
 rcgen = "0.14.6"
-bincode = "3.0.0"
+bincode = "1.3"
 tracing = "0.1.44"
 anyhow = "1.0.100"
