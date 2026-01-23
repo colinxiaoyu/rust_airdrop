@@ -1,17 +1,17 @@
 use std::{path::PathBuf, time::Duration};
 
 use discovery::Discovery;
-use session::{event::SessionEvent, manager::SessionManager};
+use session::{SessionEvent, SessionManager};
 use tokio::sync::mpsc;
 use tracing::info;
-use transfer_manager::{event::TransferEvent, manager::TransferManamger};
+use transfer::{TransferEvent, TransferManager};
 
 use crate::event::DaemonEvent;
 
 pub struct DaemonCore {
     discovery: Discovery,
     session_manager: SessionManager,
-    transfer_manager: TransferManamger,
+    transfer_manager: TransferManager,
     session_rx: mpsc::Receiver<SessionEvent>,
     transfer_rx: mpsc::Receiver<TransferEvent>,
     daemon_tx: mpsc::Sender<DaemonEvent>,
@@ -23,16 +23,15 @@ impl DaemonCore {
         tracing_subscriber::fmt::init();
         info!("airdropd starting...");
         // 1. Discovery
-        let mut discovery = Discovery::new("MyDevice");
+        let discovery = Discovery::new(&device_name);
         // 2. Session
-        let (session_tx, mut session_rx) = mpsc::channel(100);
-        let mut session_manager = SessionManager::new(session_tx);
+        let (session_tx, session_rx) = mpsc::channel(100);
+        let session_manager = SessionManager::new(session_tx);
         // Transfer
-        let (transfer_tx, mut transfer_rx) = mpsc::channel::<TransferEvent>(100);
-        let download_dir = PathBuf::from("./downloads");
-        let transfer_manager = TransferManamger::new(5000, download_dir, transfer_tx);
+        let (transfer_tx, transfer_rx) = mpsc::channel::<TransferEvent>(100);
+        let transfer_manager = TransferManager::new(bind_port, download_dir, transfer_tx);
         // 4. Daemon event channel (CLI / internal trigger)
-        let (daemon_tx, mut daemon_rx) = mpsc::channel::<DaemonEvent>(10);
+        let (daemon_tx, daemon_rx) = mpsc::channel::<DaemonEvent>(10);
         // 🚧 临时：5 秒后模拟一次“发送文件”
         tokio::spawn({
             let tx = daemon_tx.clone();
@@ -81,14 +80,13 @@ impl DaemonCore {
             // 3. Transfer 事件（文件传输）
             Some(event) = self.transfer_rx.recv() => {
                 match &event {
-                    TransferEvent::FileReceived { from, file, size } => {
+                    TransferEvent::FileReceived { file_name, file_size, file_path, sender_addr } => {
                         tracing::info!("收到文件: {} 来自 {} ({}bytes)",
-                            file.display(), from, size);
+                            file_name, sender_addr, file_size);
                     }
-                    TransferEvent::SendProgress { to, progress } => {
-                        tracing::debug!("发送进度: {} {}%", to, progress);
+                    TransferEvent::ReceiveFailed { error, sender_addr } => {
+                        tracing::error!("接收失败: {} 来自 {:?}", error, sender_addr);
                     }
-                    _ => {}
                 }
                 Some(DaemonNotification::Transfer(event))
             }
@@ -101,6 +99,26 @@ impl DaemonCore {
             _ = tokio::time::sleep(Duration::from_secs(5)) => {
                 self.session_manager.reap_offline(Duration::from_secs(30)).await;
                 None
+            }
+        }
+    }
+
+    async fn handle_command(&mut self, cmd: DaemonEvent) {
+        match cmd {
+            DaemonEvent::SendFile { peer_name, file } => {
+                if let Some(peer) = self.session_manager.find_peer_by_name(&peer_name) {
+                    let peer_addr = format!("{}:{}", peer.addr.ip(), 5000);
+                    match self.transfer_manager.send(peer_addr, file.clone()).await {
+                        Ok(_) => {
+                            tracing::info!("成功发送文件: {} 到 {}", file.display(), peer_name);
+                        }
+                        Err(e) => {
+                            tracing::error!("发送文件失败: {:?}", e);
+                        }
+                    }
+                } else {
+                    tracing::error!("找不到设备: {}", peer_name);
+                }
             }
         }
     }

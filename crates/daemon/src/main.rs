@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use tracing::error;
 use tracing::info;
 use transfer::event::TransferEvent;
-use transfer::manager::TransferManamger;
+use transfer::manager::TransferManager;
 
 use crate::event::DaemonEvent;
 
@@ -27,7 +27,7 @@ async fn main() {
     // Transfer
     let (transfer_tx, mut transfer_rx) = mpsc::channel::<TransferEvent>(100);
     let download_dir = PathBuf::from("./downloads");
-    let transfer = TransferManamger::new(5000, download_dir, transfer_tx);
+    let transfer = TransferManager::new(5000, download_dir, transfer_tx);
 
     // 4. Daemon event channel (CLI / internal trigger)
     let (daemon_tx, mut daemon_rx) = mpsc::channel::<DaemonEvent>(10);

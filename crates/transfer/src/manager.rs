@@ -5,13 +5,13 @@ use tokio::sync::mpsc;
 
 use crate::{endpoint, event::TransferEvent, receive::receive_file, send::send_file};
 use tracing::{error, info};
-pub struct TransferManamger {
+pub struct TransferManager {
     endpoint: Endpoint,
     download_dir: Arc<PathBuf>,
     event_tx: mpsc::Sender<TransferEvent>,
 }
 
-impl TransferManamger {
+impl TransferManager {
     pub fn new(
         bind_port: u16,
         download_dir: PathBuf,
