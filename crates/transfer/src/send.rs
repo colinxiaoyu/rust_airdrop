@@ -5,11 +5,7 @@ use tokio::fs::File;
 
 use crate::protocol::FileHeader;
 
-pub async fn send_file(
-    endpoint: &Endpoint,
-    remote: &str,
-    file_path: &Path,
-) -> anyhow::Result<()> {
+pub async fn send_file(endpoint: &Endpoint, remote: &str, file_path: &Path) -> anyhow::Result<()> {
     let conn = endpoint.connect(remote.parse()?, "airdrop")?.await?;
 
     let mut stream = conn.open_uni().await?;

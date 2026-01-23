@@ -39,11 +39,15 @@
 |------|------|------|------|
 | 异步运行时 | Tokio | 1.x | 事件循环、并发任务管理 |
 | 网络层 | socket2 | 0.6.1 | UDP 多播底层套接字操作 |
+| QUIC 协议 | Quinn | 0.11.9 | 文件传输协议层 |
+| TLS 加密 | Rustls | 0.23.36 | 安全通信 |
+| 证书生成 | rcgen | 0.14.6 | TLS 证书生成 |
 | 设备标识 | uuid | 1.x | 生成设备唯一 ID |
 | CLI 解析 | clap | 4.x | 命令行参数解析 |
 | 日志系统 | tracing | 0.1 | 结构化日志 |
 | 日志输出 | tracing-subscriber | 0.3 | 日志订阅和格式化 |
 | 序列化 | serde | 1.x | 数据序列化/反序列化 |
+| 二进制序列化 | bincode | 1.3 | 文件传输协议序列化 |
 | 配置解析 | toml | 0.8 | 配置文件解析 |
 
 ---
@@ -187,16 +191,116 @@ pub enum SessionEvent {
 ### 3. Transfer Crate
 
 **路径**: `crates/transfer/`
-**职责**: 实现设备间的文件传输功能
+**职责**: 实现基于 QUIC 协议的设备间文件传输功能
 
-**当前状态**: ⏳ 待实现 (仅有占位符代码)
+**当前状态**: 🟢 核心功能已实现
 
-**预期功能**:
-- 文件发送/接收
-- 传输进度追踪
-- 断点续传
-- 错误恢复机制
-- 带宽管理
+#### 技术栈
+
+| 组件 | 技术 | 版本 | 用途 |
+|------|------|------|------|
+| 传输协议 | Quinn | 0.11.9 | QUIC 协议实现 |
+| TLS 加密 | Rustls | 0.23.36 | 安全传输层 |
+| 证书生成 | rcgen | 0.14.6 | 自签名证书生成 |
+| 序列化 | bincode | 1.3 | 二进制序列化 |
+| 加密后端 | ring | - | 密码学原语 |
+
+#### 模块结构
+
+| 文件 | 职责 |
+|------|------|
+| `endpoint.rs` | QUIC 端点配置（客户端/服务端）|
+| `protocol.rs` | 文件传输协议定义 |
+| `send.rs` | 文件发送逻辑 |
+| `receive.rs` | 文件接收逻辑 |
+| `lib.rs` | 模块导出 |
+
+#### 核心组件
+
+**FileHeader 结构体** - 文件元信息
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct FileHeader {
+    pub file_name: String,  // 文件名
+    pub file_size: u64,     // 文件大小（字节）
+}
+```
+
+**Endpoint 配置**
+
+**服务端端点** - `make_server_endpoint(bind_addr: SocketAddr)`
+- 生成自签名 TLS 证书
+- 配置 QUIC 服务端
+- 绑定到指定地址和端口
+
+**客户端端点** - `make_client_endpoint()`
+- 配置客户端 QUIC 连接
+- 使用自定义证书验证器（跳过自签名证书验证）
+- 绑定到系统分配的随机端口
+
+#### 传输协议
+
+**文件发送流程** (`send_file`)
+1. 建立 QUIC 连接到远程地址
+2. 打开单向流 (uni-directional stream)
+3. 读取文件元数据
+4. 发送协议头：
+   - 4 字节：header 长度（大端序）
+   - N 字节：序列化的 FileHeader
+5. 流式传输文件内容
+6. 关闭流并等待确认
+
+**文件接收流程** (`run_receiver`)
+1. 监听 QUIC 连接
+2. 接受新连接和单向流
+3. 读取协议头：
+   - 读取 4 字节获取 header 长度
+   - 读取并反序列化 FileHeader
+4. 根据文件名创建本地文件
+5. 流式写入文件内容
+6. 刷新并关闭文件
+
+#### 安全特性
+
+**TLS 加密**
+- 使用 Rustls 提供端到端加密
+- 服务端使用自签名证书（仅适用于局域网测试）
+- 客户端实现自定义证书验证器 `SkipServerVerification`
+
+**注意**: 当前实现跳过证书验证，仅适用于受信任的局域网环境。生产环境应使用有效的 CA 签名证书。
+
+#### 示例程序
+
+**发送文件示例** - `examples/send_file.rs`
+```bash
+cargo run --example send_file -p transfer
+```
+- 连接到 `127.0.0.1:5000`
+- 发送 `test.txt` 文件
+
+**接收文件示例** - `examples/receive_file.rs`
+```bash
+cargo run --example receive_file -p transfer
+```
+- 监听 `0.0.0.0:5000`
+- 接收并保存文件到当前目录
+
+#### 已实现功能
+
+- ✅ 基于 QUIC 的可靠传输
+- ✅ TLS 加密通信
+- ✅ 流式文件传输（支持大文件）
+- ✅ 文件元信息传输
+- ✅ 异步 I/O
+
+#### 待实现功能
+
+- ⏳ 传输进度追踪
+- ⏳ 断点续传
+- ⏳ 多文件批量传输
+- ⏳ 错误恢复机制
+- ⏳ 带宽限制
+- ⏳ 有效的证书验证
 
 ---
 
@@ -589,6 +693,9 @@ loop {
 | Session | 会话管理核心逻辑 | 🟢 完整实现 |
 | Session | 在线/离线检测 | 🟢 完整实现 |
 | Session | 事件系统 | 🟢 完整实现 |
+| Transfer | QUIC 文件传输 | 🟢 完整实现 |
+| Transfer | TLS 加密通信 | 🟢 完整实现 |
+| Transfer | 流式传输 | 🟢 完整实现 |
 | CLI | 命令框架 | 🟡 基础框架完成 |
 | Daemon | 主循环框架 | 🟡 基础框架完成 |
 
@@ -596,13 +703,15 @@ loop {
 
 | 模块 | 功能 | 优先级 |
 |------|------|--------|
-| Transfer | 文件传输协议 | 🔴 高 |
-| Transfer | 进度追踪 | 🟡 中 |
-| Daemon | 模块集成 | 🔴 高 |
+| Transfer | 传输进度追踪 | 🟡 中 |
+| Transfer | 断点续传 | 🟡 中 |
+| Transfer | 多文件批量传输 | 🟡 中 |
+| Transfer | 有效的证书验证 | 🔴 高 |
+| Daemon | 模块集成 (Discovery + Session + Transfer) | 🔴 高 |
 | Daemon | 配置管理 | 🟡 中 |
+| CLI | 文件发送命令 | 🔴 高 |
 | CLI | 系统集成 (systemd/launchd) | 🟡 中 |
 | 全局 | 错误处理 | 🔴 高 |
-| 全局 | 安全通信 (TLS/加密) | 🟡 中 |
 | 全局 | 认证机制 | 🟡 中 |
 
 ### 技术债务
@@ -697,6 +806,8 @@ cargo test
 # 运行示例
 cargo run --example test_discovery -p discovery
 cargo run --example test_session -p session
+cargo run --example receive_file -p transfer  # 接收文件
+cargo run --example send_file -p transfer     # 发送文件
 
 # 查看依赖树
 cargo tree

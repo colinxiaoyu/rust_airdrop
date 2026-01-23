@@ -60,4 +60,8 @@ impl SessionManager {
             }
         }
     }
+
+    pub fn get_peer(&self, name: &str) -> Option<&Peer> {
+        self.sessions.get(name).map(|s| &s.peer)
+    }
 }

@@ -9,3 +9,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+
+discovery = { path = "../discovery" }
+session= { path = "../session" }
+transfer= { path = "../transfer" }

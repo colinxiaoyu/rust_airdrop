@@ -28,7 +28,7 @@ pub fn make_client_endpoint() -> Endpoint {
         .with_no_client_auth();
 
     let client_config = quinn::ClientConfig::new(Arc::new(
-        quinn::crypto::rustls::QuicClientConfig::try_from(crypto).unwrap()
+        quinn::crypto::rustls::QuicClientConfig::try_from(crypto).unwrap(),
     ));
     endpoint.set_default_client_config(client_config);
     endpoint
