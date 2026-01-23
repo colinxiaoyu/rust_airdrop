@@ -65,3 +65,35 @@ impl SessionManager {
         self.sessions.get(name).map(|s| &s.peer)
     }
 }
+
+impl SessionManager {
+    /// 获取所有在线设备
+    pub fn get_online_peers(&self) -> Vec<Peer> {
+        self.sessions
+            .values()
+            .filter(|s| s.is_online())
+            .map(|s| s.peer.clone())
+            .collect()
+    }
+
+    /// 根据设备名查找设备
+    pub fn find_peer_by_name(&self, name: &str) -> Option<Peer> {
+        self.sessions
+            .values()
+            .find(|s| s.peer.name == name && s.is_online())
+            .map(|s| s.peer.clone())
+    }
+
+    /// 根据设备 ID 查找设备
+    pub fn find_peer_by_id(&self, id: &str) -> Option<Peer> {
+        self.sessions
+            .get(id)
+            .filter(|s| s.is_online())
+            .map(|s| s.peer.clone())
+    }
+
+    /// 获取在线设备数量
+    pub fn online_count(&self) -> usize {
+        self.sessions.values().filter(|s| s.is_online()).count()
+    }
+}

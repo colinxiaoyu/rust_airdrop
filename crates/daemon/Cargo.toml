@@ -3,6 +3,10 @@ name = "daemon"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "daemon"
+path = "src/lib.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"

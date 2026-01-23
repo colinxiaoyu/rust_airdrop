@@ -1,6 +1,6 @@
 use discovery::Peer;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SessionEvent {
     PeerOnline(Peer),
     PeerOffline(Peer),

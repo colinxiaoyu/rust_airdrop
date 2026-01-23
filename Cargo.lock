@@ -294,6 +294,7 @@ dependencies = [
 name = "discovery"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "socket2",
  "tokio",
  "tokio-stream",

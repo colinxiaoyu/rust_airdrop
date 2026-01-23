@@ -1,17 +1,24 @@
 use std::{
     net::{Ipv4Addr, SocketAddr},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
+use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::{net::UdpSocket, sync::mpsc};
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
+fn default_instant() -> Instant {
+    Instant::now()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Peer {
-    pub id: Uuid,
-    pub name: String,
-    pub addr: SocketAddr,
+    pub id: String,       // 设备唯一标识
+    pub name: String,     // 设备名称
+    pub addr: SocketAddr, // 设备地址
+    #[serde(skip, default = "default_instant")]
+    pub last_seen: Instant, // 最后一次心跳（不序列化）
 }
 
 pub struct Discovery {
@@ -91,9 +98,10 @@ impl Discovery {
                         if msg.starts_with("DISCOVERY:") {
                             let name = msg.trim_start_matches("DISCOVERY:").trim().to_string();
                             let peer = Peer {
-                                id: Uuid::new_v4(),
+                                id: Uuid::new_v4().to_string(),
                                 name,
                                 addr,
+                                last_seen: Instant::now(),
                             };
                             let _ = tx.send(peer).await;
                         }
