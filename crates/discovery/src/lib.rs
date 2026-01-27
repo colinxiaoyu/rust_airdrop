@@ -4,7 +4,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use socket2::{Domain, Protocol, Socket, Type};
 use tokio::{net::UdpSocket, sync::mpsc};
 use uuid::Uuid;
 
@@ -34,9 +34,9 @@ impl Discovery {
 
         let device_name = device_name.to_string();
 
-        tokio::spawn(Self::broadcast_task(device_name.clone()));
+        tokio::spawn(Self::broadcast_task(device_id, device_name.clone()));
 
-        tokio::spawn(Self::listen_task(tx.clone()));
+        tokio::spawn(Self::listen_task(device_id, tx.clone()));
 
         Discovery {
             device_id,
@@ -46,13 +46,13 @@ impl Discovery {
     }
 
     /// 广播自己的存在
-    async fn broadcast_task(device_name: String) {
+    async fn broadcast_task(device_id: Uuid, device_name: String) {
         let muticast_addr = "224.0.0.251:5353";
         let socket = UdpSocket::bind("0.0.0.0:0")
             .await
             .expect("UdpSocket unstart");
 
-        let msg = format!("DISCOVERY:{}\n", device_name);
+        let msg = format!("DISCOVERY:{}:{}\n", device_id, device_name);
 
         loop {
             let _ = socket.send_to(msg.as_bytes(), muticast_addr).await;
@@ -61,7 +61,7 @@ impl Discovery {
     }
 
     /// 监听局域网内其他设备
-    async fn listen_task(tx: mpsc::Sender<Peer>) {
+    async fn listen_task(local_device_id: Uuid, tx: mpsc::Sender<Peer>) {
         // 1️⃣ 创建 socket2 套接字
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))
             .expect("Failed to create socket");
@@ -96,14 +96,25 @@ impl Discovery {
                 Ok((len, addr)) => {
                     if let Ok(msg) = str::from_utf8(&buf[..len]) {
                         if msg.starts_with("DISCOVERY:") {
-                            let name = msg.trim_start_matches("DISCOVERY:").trim().to_string();
-                            let peer = Peer {
-                                id: Uuid::new_v4().to_string(),
-                                name,
-                                addr,
-                                last_seen: Instant::now(),
-                            };
-                            let _ = tx.send(peer).await;
+                            let content = msg.trim_start_matches("DISCOVERY:").trim();
+
+                            // 解析格式: device_id:device_name
+                            if let Some((id_str, name)) = content.split_once(':') {
+                                // 过滤掉本机的广播
+                                if let Ok(peer_id) = Uuid::parse_str(id_str) {
+                                    if peer_id == local_device_id {
+                                        continue; // 忽略本机
+                                    }
+
+                                    let peer = Peer {
+                                        id: peer_id.to_string(),
+                                        name: name.to_string(),
+                                        addr,
+                                        last_seen: Instant::now(),
+                                    };
+                                    let _ = tx.send(peer).await;
+                                }
+                            }
                         }
                     }
                 }

@@ -3,7 +3,7 @@ use transfer::receive::run_receiver;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let endpoint = make_server_endpoint("0.0.0.0:5000".parse()?);
+    let endpoint = make_server_endpoint("0.0.0.0:5000".parse()?)?;
     println!("listening on 5000");
     run_receiver(endpoint).await
 }

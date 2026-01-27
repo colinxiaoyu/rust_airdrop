@@ -1,60 +1,77 @@
 use std::{path::PathBuf, time::Duration};
 
-use discovery::Discovery;
+use anyhow::Result;
+use discovery::{Discovery, Peer};
 use session::{SessionEvent, SessionManager};
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{error, info};
 use transfer::{TransferEvent, TransferManager};
 
 use crate::event::DaemonEvent;
 
+/// Daemon 核心，管理所有子模块的生命周期
 pub struct DaemonCore {
+    // 子模块
     discovery: Discovery,
     session_manager: SessionManager,
     transfer_manager: TransferManager,
+
+    // 设备信息
+    device_name: String,
+    bind_port: u16,
+
+    // 事件通道（接收）
     session_rx: mpsc::Receiver<SessionEvent>,
     transfer_rx: mpsc::Receiver<TransferEvent>,
+
+    // 命令通道（发送/接收）
     daemon_tx: mpsc::Sender<DaemonEvent>,
     daemon_rx: mpsc::Receiver<DaemonEvent>,
 }
 
 impl DaemonCore {
-    pub fn new(device_name: String, bind_port: u16, download_dir: PathBuf) -> Self {
-        tracing_subscriber::fmt::init();
-        info!("airdropd starting...");
-        // 1. Discovery
-        let discovery = Discovery::new(&device_name);
-        // 2. Session
-        let (session_tx, session_rx) = mpsc::channel(100);
-        let session_manager = SessionManager::new(session_tx);
-        // Transfer
-        let (transfer_tx, transfer_rx) = mpsc::channel::<TransferEvent>(100);
-        let transfer_manager = TransferManager::new(bind_port, download_dir, transfer_tx);
-        // 4. Daemon event channel (CLI / internal trigger)
-        let (daemon_tx, daemon_rx) = mpsc::channel::<DaemonEvent>(10);
-        // 🚧 临时：5 秒后模拟一次“发送文件”
-        tokio::spawn({
-            let tx = daemon_tx.clone();
-            async move {
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                tx.send(DaemonEvent::SendFile {
-                    peer_name: "peer".into(),
-                    file: PathBuf::from("test.txt"),
-                })
-                .await
-                .ok();
-            }
-        });
+    /// 创建新的 DaemonCore 实例
+    ///
+    /// # 参数
+    /// - `device_name`: 本设备名称（用于广播和显示）
+    /// - `bind_port`: 监听端口（Discovery 和 Transfer 使用）
+    /// - `download_dir`: 接收文件的保存目录
+    ///
+    /// # 注意
+    /// 调用者应该在调用此函数之前初始化 tracing (如 `tracing_subscriber::fmt::init()`)
+    pub fn new(device_name: String, bind_port: u16, download_dir: PathBuf) -> Result<Self> {
+        info!("Initializing DaemonCore...");
+        info!("Device name: {}", device_name);
+        info!("Bind port: {}", bind_port);
+        info!("Download dir: {}", download_dir.display());
 
-        DaemonCore {
+        // 1. 创建事件通道
+        let (session_tx, session_rx) = mpsc::channel(100);
+        let (transfer_tx, transfer_rx) = mpsc::channel(100);
+        let (daemon_tx, daemon_rx) = mpsc::channel(100);
+
+        // 2. 初始化 Discovery
+        let discovery = Discovery::new(&device_name);
+
+        // 3. 初始化 SessionManager
+        let session_manager = SessionManager::new(session_tx);
+
+        // 4. 初始化 TransferManager（自动接收）
+        let transfer_manager = TransferManager::new(bind_port, download_dir, transfer_tx)?;
+
+        info!("DaemonCore initialized successfully");
+
+        Ok(Self {
             discovery,
             session_manager,
             transfer_manager,
+            device_name,
+            bind_port,
             session_rx,
             transfer_rx,
             daemon_tx,
             daemon_rx,
-        }
+        })
     }
 
     pub async fn tick(&mut self) -> Option<DaemonNotification> {
@@ -103,23 +120,63 @@ impl DaemonCore {
         }
     }
 
+    /// 处理命令
     async fn handle_command(&mut self, cmd: DaemonEvent) {
         match cmd {
             DaemonEvent::SendFile { peer_name, file } => {
-                if let Some(peer) = self.session_manager.find_peer_by_name(&peer_name) {
-                    let peer_addr = format!("{}:{}", peer.addr.ip(), 5000);
-                    match self.transfer_manager.send(peer_addr, file.clone()).await {
-                        Ok(_) => {
-                            tracing::info!("成功发送文件: {} 到 {}", file.display(), peer_name);
-                        }
-                        Err(e) => {
-                            tracing::error!("发送文件失败: {:?}", e);
-                        }
-                    }
-                } else {
-                    tracing::error!("找不到设备: {}", peer_name);
+                if let Err(e) = self.send_file_internal(&peer_name, file).await {
+                    error!("发送文件失败: {}", e);
                 }
             }
+        }
+    }
+
+    /// 内部发送文件逻辑
+    async fn send_file_internal(&self, peer_name: &str, file: PathBuf) -> Result<()> {
+        // 1. 查找目标设备
+        let peer = self
+            .session_manager
+            .find_peer_by_name(peer_name)
+            .ok_or_else(|| anyhow::anyhow!("设备不在线: {}", peer_name))?;
+
+        // 2. 检查文件是否存在
+        if !file.exists() {
+            return Err(anyhow::anyhow!("文件不存在: {}", file.display()));
+        }
+
+        // 3. 构造地址并发送文件
+        let peer_addr = format!("{}:{}", peer.addr.ip(), self.bind_port);
+        self.transfer_manager.send(peer_addr, file.clone()).await?;
+
+        info!("成功发送文件: {} 到 {}", file.display(), peer_name);
+        Ok(())
+    }
+
+    /// 公开 API：发送文件
+    ///
+    /// # 参数
+    /// - `peer_name`: 目标设备名称
+    /// - `file`: 要发送的文件路径
+    pub async fn send_file(&self, peer_name: &str, file: PathBuf) -> Result<()> {
+        self.daemon_tx
+            .send(DaemonEvent::SendFile {
+                peer_name: peer_name.to_string(),
+                file,
+            })
+            .await?;
+        Ok(())
+    }
+
+    /// 公开 API：获取在线设备列表
+    pub fn get_online_peers(&self) -> Vec<Peer> {
+        self.session_manager.get_online_peers()
+    }
+
+    /// 公开 API：获取本设备信息
+    pub fn get_device_info(&self) -> DeviceInfo {
+        DeviceInfo {
+            name: self.device_name.clone(),
+            port: self.bind_port,
         }
     }
 }
@@ -132,7 +189,7 @@ pub enum DaemonNotification {
 }
 
 /// 设备信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DeviceInfo {
     pub name: String,
     pub port: u16,

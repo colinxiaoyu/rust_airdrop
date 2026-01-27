@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
+use anyhow::Result;
 use quinn::Endpoint;
 use tokio::sync::mpsc;
 
@@ -16,15 +17,15 @@ impl TransferManager {
         bind_port: u16,
         download_dir: PathBuf,
         event_tx: mpsc::Sender<TransferEvent>,
-    ) -> Self {
+    ) -> Result<Self> {
         // 1. 确保下载目录存在
         if !download_dir.exists() {
-            std::fs::create_dir_all(&download_dir).expect("Failed to create download directory");
+            std::fs::create_dir_all(&download_dir)?;
         }
 
         // 2. 创建 Endpoint
         let endpoint =
-            endpoint::make_server_endpoint(format!("0.0.0.0:{bind_port}").parse().unwrap());
+            endpoint::make_server_endpoint(format!("0.0.0.0:{bind_port}").parse()?)?;
 
         let download_dir = Arc::new(download_dir);
 
@@ -34,18 +35,18 @@ impl TransferManager {
             download_dir.clone(),
             event_tx.clone(),
         ));
-        Self {
+        Ok(Self {
             endpoint,
             download_dir,
             event_tx,
-        }
+        })
     }
 
     pub fn endpoint(&self) -> &Endpoint {
         &self.endpoint
     }
 
-    pub async fn send(&self, peer_addr: String, file: PathBuf) -> anyhow::Result<()> {
+    pub async fn send(&self, peer_addr: String, file: PathBuf) -> Result<()> {
         send_file(&self.endpoint, &peer_addr, &file).await
     }
 

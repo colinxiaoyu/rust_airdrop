@@ -1,25 +1,30 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use anyhow::Result;
 use quinn::{Endpoint, ServerConfig};
 use rcgen::generate_simple_self_signed;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
-pub fn make_server_endpoint(bind_addr: SocketAddr) -> Endpoint {
-    let certified_key = generate_simple_self_signed(vec!["airdrop".into()]).unwrap();
+pub fn make_server_endpoint(bind_addr: SocketAddr) -> Result<Endpoint> {
+    let certified_key = generate_simple_self_signed(vec!["airdrop".into()])?;
     let cert_der = certified_key.cert.der().to_vec();
     let key_der = certified_key.signing_key.serialize_der();
 
     let cert = CertificateDer::from(cert_der);
-    let key = PrivateKeyDer::try_from(key_der).unwrap();
+    let key = PrivateKeyDer::try_from(key_der)
+        .map_err(|e| anyhow::anyhow!("无法解析私钥: {}", e))?;
 
-    let server_config = ServerConfig::with_single_cert(vec![cert], key).unwrap();
+    let server_config = ServerConfig::with_single_cert(vec![cert], key)?;
 
-    Endpoint::server(server_config, bind_addr).unwrap()
+    let endpoint = Endpoint::server(server_config, bind_addr)
+        .map_err(|e| anyhow::anyhow!("无法绑定端口 {}: {}", bind_addr, e))?;
+
+    Ok(endpoint)
 }
 
-pub fn make_client_endpoint() -> Endpoint {
-    let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+pub fn make_client_endpoint() -> Result<Endpoint> {
+    let mut endpoint = Endpoint::client("0.0.0.0:0".parse()?)?;
 
     // Create a custom certificate verifier that accepts all certificates
     let crypto = rustls::ClientConfig::builder()
@@ -28,10 +33,10 @@ pub fn make_client_endpoint() -> Endpoint {
         .with_no_client_auth();
 
     let client_config = quinn::ClientConfig::new(Arc::new(
-        quinn::crypto::rustls::QuicClientConfig::try_from(crypto).unwrap(),
+        quinn::crypto::rustls::QuicClientConfig::try_from(crypto)?,
     ));
     endpoint.set_default_client_config(client_config);
-    endpoint
+    Ok(endpoint)
 }
 
 // Custom certificate verifier that skips validation (for testing with self-signed certs)

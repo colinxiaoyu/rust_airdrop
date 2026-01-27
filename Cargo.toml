@@ -4,7 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["crates/daemon", "crates/cli", "crates/discovery", "crates/session", "crates/transfer"]
+members = [
+    "crates/daemon",
+    "crates/cli",
+    "crates/discovery",
+    "crates/session",
+    "crates/transfer",
+    "crates/tauri-airdrop/src-tauri"
+]
 
 
 [dependencies]

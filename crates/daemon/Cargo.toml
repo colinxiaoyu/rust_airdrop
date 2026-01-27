@@ -1,19 +1,32 @@
 [package]
 name = "daemon"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [lib]
 name = "daemon"
 path = "src/lib.rs"
 
+# 可选：保留 CLI 版本
+[[bin]]
+name = "airdropd"
+path = "src/bin/airdropd.rs"
+required-features = ["cli"]
+
+[features]
+default = []
+cli = ["clap", "tracing-subscriber"]  # CLI 专用依赖
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = "0.3"
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+anyhow = "1"
 
 discovery = { path = "../discovery" }
-session= { path = "../session" }
-transfer= { path = "../transfer" }
+session = { path = "../session" }
+transfer = { path = "../transfer" }
+
+# CLI 专用
+clap = { version = "4", features = ["derive"], optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
