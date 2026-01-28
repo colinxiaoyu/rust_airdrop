@@ -26,23 +26,43 @@ export function useDaemon() {
 
     // 监听 Daemon 事件
     const setupListeners = async () => {
+      console.log('[useDaemon] 设置事件监听器');
+
       const unlistenReady = await tauriApi.events.onDaemonReady(() => {
-        console.log('Daemon 就绪');
+        console.log('[useDaemon] 收到 daemon-ready 事件');
         if (mounted) {
           clearTimeout(timeoutId);
           setDaemonReady(true);
           // 加载设备信息
           loadDeviceInfo();
+        } else {
+          console.warn('[useDaemon] 组件已卸载，忽略 daemon-ready 事件');
         }
       });
 
       const unlistenError = await tauriApi.events.onDaemonError((error) => {
-        console.error('Daemon 错误:', error);
+        console.error('[useDaemon] 收到 daemon-error 事件:', error);
         if (mounted) {
           clearTimeout(timeoutId);
           setDaemonError(error);
         }
       });
+
+      console.log('[useDaemon] 事件监听器设置完成');
+
+      // 主动检查 daemon 是否已就绪（防止错过事件）
+      try {
+        const isReady = await tauriApi.checkDaemonReady();
+        console.log('[useDaemon] 主动检查 daemon 状态:', isReady);
+        if (isReady && mounted) {
+          console.log('[useDaemon] Daemon 已就绪（通过主动检查）');
+          clearTimeout(timeoutId);
+          setDaemonReady(true);
+          loadDeviceInfo();
+        }
+      } catch (err) {
+        console.error('[useDaemon] 检查 daemon 状态失败:', err);
+      }
 
       return () => {
         unlistenReady();

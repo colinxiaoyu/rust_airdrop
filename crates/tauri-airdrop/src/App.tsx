@@ -39,6 +39,8 @@ function App() {
     }
   };
 
+  console.log('daemonReady',daemonReady)
+
   // 状态指示器
   const StatusIndicator = () => {
     if (!daemonReady) {

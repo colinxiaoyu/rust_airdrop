@@ -61,7 +61,10 @@ pub async fn run_daemon(app_handle: AppHandle) {
     }
 
     info!("DaemonCore 初始化成功");
-    let _ = app_handle.emit("daemon-ready", ());
+    match app_handle.emit("daemon-ready", ()) {
+        Ok(_) => info!("daemon-ready 事件发送成功"),
+        Err(e) => error!("daemon-ready 事件发送失败: {}", e),
+    }
 
     // 3. 主事件循环
     loop {

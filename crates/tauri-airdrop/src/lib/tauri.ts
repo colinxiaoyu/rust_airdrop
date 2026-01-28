@@ -70,6 +70,13 @@ export const tauriApi = {
     return invoke<string>('get_download_dir');
   },
 
+  /**
+   * 检查 Daemon 是否已就绪
+   */
+  checkDaemonReady: async (): Promise<boolean> => {
+    return invoke<boolean>('check_daemon_ready');
+  },
+
   // ---- 事件监听 ----
 
   events: {

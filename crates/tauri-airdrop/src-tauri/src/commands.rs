@@ -100,3 +100,10 @@ pub async fn get_download_dir() -> Result<String, String> {
 
     Ok(dir.to_string_lossy().to_string())
 }
+
+/// 检查 Daemon 是否已就绪
+#[tauri::command]
+pub async fn check_daemon_ready(state: State<'_, AppState>) -> Result<bool, String> {
+    let daemon_lock = state.daemon.read().await;
+    Ok(daemon_lock.is_some())
+}

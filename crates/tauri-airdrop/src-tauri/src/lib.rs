@@ -40,6 +40,7 @@ pub fn run() {
             commands::list_peers,
             commands::get_device_info,
             commands::get_download_dir,
+            commands::check_daemon_ready,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
