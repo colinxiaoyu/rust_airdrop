@@ -15,7 +15,7 @@ pub async fn run_daemon(app_handle: AppHandle) {
     info!("启动 Daemon 后台任务");
 
     // 1. 初始化 DaemonCore
-    let device_name = whoami::devicename();
+    let device_name = get_device_name();
     let download_dir = get_download_dir();
 
     info!("设备名: {}", device_name);
@@ -133,8 +133,8 @@ fn emit_to_frontend(app_handle: &AppHandle, notification: DaemonNotification) {
                     error!("发送事件失败: {}", e);
                 }
 
-                // 系统通知
-                #[cfg(not(target_os = "linux"))]
+                // 系统通知 - 桌面平台
+                #[cfg(all(not(target_os = "linux"), not(target_os = "android")))]
                 {
                     use tauri_plugin_notification::NotificationExt;
                     let _ = app_handle
@@ -143,6 +143,23 @@ fn emit_to_frontend(app_handle: &AppHandle, notification: DaemonNotification) {
                         .title("收到文件")
                         .body(format!("来自 {}: {}", sender_addr, file_name))
                         .show();
+                }
+
+                // 系统通知 - Android 平台（需要检查运行时权限）
+                #[cfg(target_os = "android")]
+                {
+                    use tauri_plugin_notification::NotificationExt;
+                    // Android 13+ 需要运行时通知权限，检查权限状态后再显示
+                    if let Ok(permission) = app_handle.notification().permission_state() {
+                        if permission == tauri_plugin_notification::PermissionState::Granted {
+                            let _ = app_handle
+                                .notification()
+                                .builder()
+                                .title("收到文件")
+                                .body(format!("来自 {}: {}", sender_addr, file_name))
+                                .show();
+                        }
+                    }
                 }
             }
             TransferEvent::ReceiveFailed { error, sender_addr } => {
@@ -157,9 +174,62 @@ fn emit_to_frontend(app_handle: &AppHandle, notification: DaemonNotification) {
     }
 }
 
+/// 获取设备名称
+fn get_device_name() -> String {
+    #[cfg(target_os = "android")]
+    {
+        // Android: 尝试多个来源获取设备名称
+        // 1. 尝试从系统属性获取设备型号
+        if let Ok(model) = std::env::var("PRODUCT_MODEL") {
+            if !model.is_empty() && model != "unknown" {
+                return format!("Android-{}", model);
+            }
+        }
+
+        // 2. 尝试从 ro.product.model 获取（需要读取系统属性）
+        if let Ok(output) = std::process::Command::new("getprop")
+            .arg("ro.product.model")
+            .output()
+        {
+            if let Ok(model) = String::from_utf8(output.stdout) {
+                let model = model.trim();
+                if !model.is_empty() {
+                    return format!("Android-{}", model);
+                }
+            }
+        }
+
+        // 3. 使用 whoami 作为备用
+        let name = whoami::devicename();
+        if name != "localhost" && !name.is_empty() {
+            return name;
+        }
+
+        // 4. 最后的备用选项
+        "Android设备".to_string()
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        whoami::devicename()
+    }
+}
+
 /// 获取下载目录
 fn get_download_dir() -> PathBuf {
-    dirs::download_dir()
-        .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
-        .unwrap_or_else(|| PathBuf::from("./downloads"))
+    #[cfg(target_os = "android")]
+    {
+        // Android: 使用应用专属外部存储（无需额外权限）
+        std::env::var("EXTERNAL_STORAGE")
+            .ok()
+            .map(|s| PathBuf::from(s).join("Android/data/com.colin.tauri-airdrop/files/Downloads"))
+            .unwrap_or_else(|| PathBuf::from("/sdcard/Download"))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        dirs::download_dir()
+            .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+            .unwrap_or_else(|| PathBuf::from("./downloads"))
+    }
 }

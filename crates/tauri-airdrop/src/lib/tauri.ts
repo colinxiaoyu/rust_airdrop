@@ -14,6 +14,12 @@ export interface DeviceInfo {
   port: number;
 }
 
+export interface FileInfo {
+  path: string;
+  name: string;
+  size: number;
+}
+
 export interface FileReceivedEvent {
   from: string;
   fileName: string;
@@ -75,6 +81,13 @@ export const tauriApi = {
    */
   checkDaemonReady: async (): Promise<boolean> => {
     return invoke<boolean>('check_daemon_ready');
+  },
+
+  /**
+   * 获取文件信息
+   */
+  getFileInfo: async (filePath: string): Promise<FileInfo> => {
+    return invoke<FileInfo>('get_file_info', { filePath });
   },
 
   // ---- 事件监听 ----

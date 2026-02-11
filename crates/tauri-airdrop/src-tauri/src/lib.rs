@@ -14,7 +14,10 @@ pub fn run() {
         .with(
             EnvFilter::from_default_env()
                 .add_directive("tauri_airdrop=debug".parse().unwrap())
-                .add_directive("daemon=debug".parse().unwrap()),
+                .add_directive("daemon=debug".parse().unwrap())
+                .add_directive("transfer=debug".parse().unwrap())
+                .add_directive("discovery=debug".parse().unwrap())
+                .add_directive("session=debug".parse().unwrap()),
         )
         .init();
 
@@ -41,6 +44,7 @@ pub fn run() {
             commands::get_device_info,
             commands::get_download_dir,
             commands::check_daemon_ready,
+            commands::get_file_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -70,8 +70,10 @@ impl Discovery {
         socket
             .set_reuse_address(true)
             .expect("set_reuse_address failed");
-        #[cfg(unix)]
-        socket.set_reuse_port(true).expect("set_reuse_port failed"); // Unix 平台可选
+
+        // Android 对 SO_REUSEPORT 的支持不稳定，仅在非 Android 的 Unix 平台上使用
+        #[cfg(all(unix, not(target_os = "android")))]
+        socket.set_reuse_port(true).expect("set_reuse_port failed");
 
         // 3️⃣ 绑定本地端口
         let addr: SocketAddr = "0.0.0.0:5353".parse().unwrap();

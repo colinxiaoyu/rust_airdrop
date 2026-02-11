@@ -3,10 +3,14 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": ["main"],
+  "platforms": ["android", "macOS", "windows", "linux"],
   "permissions": [
     "core:default",
     "opener:default",
+    "opener:allow-open-path",
     "notification:default",
-    "notification:allow-is-permission-granted"
+    "notification:allow-is-permission-granted",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

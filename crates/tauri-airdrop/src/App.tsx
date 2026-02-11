@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Menu, RefreshCw, Send, Wifi, WifiOff, FileText, AlertCircle } from 'lucide-react';
+import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { Menu, RefreshCw, Send, Wifi, WifiOff, FileText, AlertCircle, FolderOpen, ExternalLink } from 'lucide-react';
+import { Toaster, toast } from 'sonner';
 import { useDaemon } from './hooks/useDaemon';
 import { usePeers } from './hooks/usePeers';
 import { useFileTransfer } from './hooks/useFileTransfer';
@@ -28,14 +30,85 @@ function App() {
       });
 
       if (file) {
+        console.log('选择的文件路径:', file);
         setSending(true);
         setSendError(null);
-        await sendFile(selectedPeer.name, file);
+
+        let filePath = file;
+
+        // Android content:// URI 处理
+        if (file.startsWith('content://')) {
+          console.warn('检测到 Android content:// URI，尝试解析真实路径');
+
+          // 尝试从 content:// URI 中提取真实路径
+          // 格式: content://.../document/raw%3A%2Fstorage%2F...
+          const match = file.match(/raw%3A([^&]+)/i);
+          if (match) {
+            const encodedPath = 'raw:' + match[1];
+            const decodedPath = decodeURIComponent(encodedPath);
+            filePath = decodedPath.replace('raw:', '');
+            console.log('解析出的文件路径:', filePath);
+          } else {
+            // 尝试其他格式: content://.../document/primary%3A...
+            const primaryMatch = file.match(/primary%3A([^&]+)/i);
+            if (primaryMatch) {
+              const encodedPath = primaryMatch[1];
+              const decodedPath = decodeURIComponent(encodedPath);
+              filePath = `/storage/emulated/0/${decodedPath}`;
+              console.log('解析出的文件路径 (primary):', filePath);
+            } else {
+              console.error('无法解析 content:// URI:', file);
+              setSendError('无法解析文件路径。请尝试：\n1. 使用文件管理器复制文件到 /sdcard/Download/\n2. 然后手动输入路径：/sdcard/Download/文件名');
+              setSending(false);
+              return;
+            }
+          }
+        }
+
+        await sendFile(selectedPeer.name, filePath);
       }
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : '发送失败');
+      console.error('发送文件错误:', err);
+      const errorMessage = err instanceof Error ? err.message : '发送失败';
+      setSendError(errorMessage);
     } finally {
       setSending(false);
+    }
+  };
+
+  // 打开文件
+  const handleOpenFile = async (filePath: string) => {
+    try {
+      await openPath(filePath);
+    } catch (err) {
+      console.error('打开文件失败:', err);
+    }
+  };
+
+  // 检测是否为移动平台
+  const isMobile = () => {
+    const platform = navigator.userAgent.toLowerCase();
+    return /android|ios|mobile/i.test(platform);
+  };
+
+  // 在文件夹中显示（仅桌面平台支持）
+  const handleRevealInFolder = async (filePath: string) => {
+    if (isMobile()) {
+      // Android 无法打开应用私有目录，显示路径提示
+      const lastSlashIndex = filePath.lastIndexOf('/');
+      const folderPath = lastSlashIndex > 0 ? filePath.substring(0, lastSlashIndex) : filePath;
+      toast.info('文件保存位置', {
+        description: folderPath,
+        duration: 5000,
+      });
+      return;
+    }
+
+    try {
+      await revealItemInDir(filePath);
+    } catch (err) {
+      console.error('打开文件夹失败:', err);
+      toast.error('无法打开文件夹');
     }
   };
 
@@ -73,6 +146,7 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-zinc-50">
+      <Toaster position="top-center" richColors />
       {/* Header */}
       <header className="bg-white border-b border-zinc-200 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -213,7 +287,7 @@ function App() {
                 {transferHistory.slice(0, 10).map((transfer) => (
                   <div
                     key={transfer.id}
-                    className="flex items-center gap-3 p-3 bg-zinc-50 rounded-lg"
+                    className="flex items-center gap-3 p-3 bg-zinc-50 rounded-lg hover:bg-zinc-100 transition-colors group"
                   >
                     <div
                       className={clsx(
@@ -239,12 +313,32 @@ function App() {
                         {transfer.peer} · {formatFileSize(transfer.size)}
                       </div>
                     </div>
-                    <div className="text-xs text-zinc-400">
-                      {formatTimestamp(transfer.timestamp)}
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-zinc-400">
+                        {formatTimestamp(transfer.timestamp)}
+                      </div>
+                      {transfer.status === 'completed' && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handleOpenFile(transfer.file)}
+                            className="p-1.5 hover:bg-zinc-200 rounded transition-colors"
+                            title="打开文件"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-zinc-600" />
+                          </button>
+                          <button
+                            onClick={() => handleRevealInFolder(transfer.file)}
+                            className="p-1.5 hover:bg-zinc-200 rounded transition-colors"
+                            title={isMobile() ? '查看文件位置' : '在文件夹中显示'}
+                          >
+                            <FolderOpen className="w-3.5 h-3.5 text-zinc-600" />
+                          </button>
+                        </div>
+                      )}
+                      {transfer.status === 'failed' && (
+                        <AlertCircle className="w-4 h-4 text-red-600" />
+                      )}
                     </div>
-                    {transfer.status === 'failed' && (
-                      <AlertCircle className="w-4 h-4 text-red-600" />
-                    )}
                   </div>
                 ))}
               </div>

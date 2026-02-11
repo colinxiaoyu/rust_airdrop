@@ -23,19 +23,39 @@ pub fn make_server_endpoint(bind_addr: SocketAddr) -> Result<Endpoint> {
     Ok(endpoint)
 }
 
-pub fn make_client_endpoint() -> Result<Endpoint> {
-    let mut endpoint = Endpoint::client("0.0.0.0:0".parse()?)?;
+/// 创建客户端配置（跳过证书验证）
+pub fn make_client_config() -> Result<quinn::ClientConfig> {
+    tracing::info!("Creating client config...");
 
     // Create a custom certificate verifier that accepts all certificates
     let crypto = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
         .with_no_client_auth();
+    tracing::info!("Created rustls ClientConfig");
 
-    let client_config = quinn::ClientConfig::new(Arc::new(
-        quinn::crypto::rustls::QuicClientConfig::try_from(crypto)?,
-    ));
+    let quic_crypto = quinn::crypto::rustls::QuicClientConfig::try_from(crypto)
+        .map_err(|e| anyhow::anyhow!("Failed to create QuicClientConfig: {}", e))?;
+    tracing::info!("Created QuicClientConfig");
+
+    let client_config = quinn::ClientConfig::new(Arc::new(quic_crypto));
+    tracing::info!("Created Quinn ClientConfig");
+
+    Ok(client_config)
+}
+
+pub fn make_client_endpoint() -> Result<Endpoint> {
+    tracing::info!("Creating client endpoint...");
+
+    let client_config = make_client_config()?;
+
+    let mut endpoint = Endpoint::client("0.0.0.0:0".parse()?)
+        .map_err(|e| anyhow::anyhow!("Failed to create client endpoint: {}", e))?;
+    tracing::info!("Created endpoint, local address: {:?}", endpoint.local_addr());
+
     endpoint.set_default_client_config(client_config);
+    tracing::info!("Set default client config on endpoint");
+
     Ok(endpoint)
 }
 
